@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f0ece4" />
+  <title>LG B2B · GNB IA Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app" class="app-root">
+    <section id="login-screen" class="login-screen" aria-labelledby="login-title">
+      <div class="login-orbit orbit-one"></div>
+      <div class="login-orbit orbit-two"></div>
+      <div class="login-card">
+        <div class="login-brand">
+          <img class="lg-logo login-logo" src="assets/lg-logo.png" alt="LG" />
+          <span class="brand-divider"></span>
+          <span class="brand-kicker">BUSINESS</span>
+        </div>
+        <p class="eyebrow">INTERNAL WORKSPACE</p>
+        <h1 id="login-title">GNB IA Studio</h1>
+        <p class="login-copy">Shape the global business navigation from the approved information architecture.</p>
+        <form id="login-form" class="login-form">
+          <label for="password-input">Workspace password</label>
+          <div class="password-wrap">
+            <input id="password-input" type="password" autocomplete="current-password" placeholder="Enter password" required />
+            <button class="reveal-button" type="button" data-action="reveal-password" aria-label="Show password">Show</button>
+          </div>
+          <button class="login-button" type="submit">Enter studio <span aria-hidden="true">→</span></button>
+          <p id="login-error" class="login-error" role="alert" aria-live="polite"></p>
+        </form>
+        <div class="login-meta"><span class="status-dot"></span> LG.com · Global / Business</div>
+      </div>
+      <p class="login-footer">For internal planning use only · Navigation model v1.0</p>
+    </section>
+
+    <section id="studio" class="studio hidden" aria-label="GNB IA Studio">
+      <header class="studio-header">
+        <div class="header-brand">
+          <img class="lg-logo" src="assets/lg-logo.png" alt="LG" />
+          <span class="header-divider"></span>
+          <div>
+            <strong>GNB IA Studio</strong>
+            <span>Global Business · internal</span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <span class="save-state" id="save-state"><span class="save-dot"></span>Saved locally</span>
+          <button class="text-button" data-action="export"><span class="button-icon">↓</span> Export IA</button>
+          <button class="outline-button" data-action="reset">Reset changes</button>
+          <button class="avatar-button" data-action="logout" aria-label="Log out">PM</button>
+        </div>
+      </header>
+
+      <div class="studio-layout">
+        <aside class="sidebar" aria-label="IA explorer">
+          <div class="sidebar-heading">
+            <div>
+              <p class="eyebrow">IA EXPLORER</p>
+              <h2>Global IA</h2>
+            </div>
+            <span class="structure-badge">TREE</span>
+          </div>
+          <div class="sidebar-tools">
+            <label class="search-field" for="tree-search">
+              <span aria-hidden="true">⌕</span>
+              <input id="tree-search" type="search" placeholder="Filter IA labels" />
+              <kbd>/</kbd>
+            </label>
+            <div class="tool-row">
+              <button class="tool-button" data-action="expand-all"><span>＋</span> Expand all</button>
+              <button class="tool-button" data-action="collapse-all"><span>−</span> Collapse</button>
+            </div>
+          </div>
+          <div class="tree-summary" id="tree-summary"></div>
+          <div id="tree" class="tree" role="tree" aria-label="Global IA hierarchy"></div>
+          <div class="sidebar-tip"><span class="tip-icon">✦</span><div><strong>Drag to reorder</strong><p>Drop on the line between rows to change order. Drop farther right to nest a branch.</p></div></div>
+        </aside>
+
+        <main class="main-content">
+          <section class="preview-section" aria-labelledby="preview-title">
+            <div class="section-heading">
+              <div><p class="eyebrow">OUTPUT PREVIEW</p><h1 id="preview-title">Business GNB</h1></div>
+
+            </div>
+            <div id="gnb-preview" class="gnb-preview"></div>
+          </section>
+          <footer class="studio-footer"><span>© LG Electronics · Internal planning tool</span><span>GNB governance workspace</span></footer>
+        </main>
+      </div>
+    </section>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </div>
+  <script src="ia-data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
