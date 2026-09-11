@@ -45,14 +45,37 @@
           <span class="header-divider"></span>
           <div>
             <strong>GNB IA Studio</strong>
-            <span>Global Business · internal</span>
           </div>
+          <label class="country-picker" for="country-select">
+            <span class="sr-only">Country</span>
+            <select id="country-select">
+              <option>Bangladesh</option>
+              <option>New Zealand</option>
+              <option>Srilanka</option>
+              <option>Nepal</option>
+              <option>Ukraine</option>
+              <option>Uzbekistan_RU</option>
+              <option>Uzbekistan</option>
+              <option>Bulgaria</option>
+              <option>Serbia</option>
+              <option>Latvia</option>
+              <option>Croatia</option>
+              <option>Slovakia</option>
+              <option>Denmark</option>
+              <option>Finland</option>
+              <option>Norway</option>
+              <option>Lithuania</option>
+              <option>Estonia</option>
+              <option>Iran (RTL)</option>
+            </select>
+          </label>
         </div>
         <div class="header-actions">
           <span class="save-state" id="save-state"><span class="save-dot"></span>Saved locally</span>
-          <button class="text-button" data-action="export"><span class="button-icon">↓</span> Export IA</button>
+          <button class="save-button" data-action="save" disabled>Save Changes</button>
+          <button class="outline-button export-button" data-action="export"><span class="button-icon">↓</span> Export IA</button>
           <button class="outline-button" data-action="reset">Reset changes</button>
-          <button class="avatar-button" data-action="logout" aria-label="Log out">PM</button>
+          <button class="logout-button" data-action="logout" aria-label="Log out"><img src="assets/logout-exit.png" alt="" /></button>
         </div>
       </header>
 
@@ -63,7 +86,10 @@
               <p class="eyebrow">IA EXPLORER</p>
               <h2>Global IA</h2>
             </div>
-            <span class="structure-badge">TREE</span>
+            <div class="drag-help">
+              <button class="drag-help-button" type="button" aria-label="Drag and reorder help">?</button>
+              <div class="drag-help-tooltip" role="tooltip"><strong>Drag to reorder</strong><span>Drop on the line between rows to change order. Drop farther right to nest a branch.</span></div>
+            </div>
           </div>
           <div class="sidebar-tools">
             <label class="search-field" for="tree-search">
@@ -78,7 +104,6 @@
           </div>
           <div class="tree-summary" id="tree-summary"></div>
           <div id="tree" class="tree" role="tree" aria-label="Global IA hierarchy"></div>
-          <div class="sidebar-tip"><span class="tip-icon">✦</span><div><strong>Drag to reorder</strong><p>Drop on the line between rows to change order. Drop farther right to nest a branch.</p></div></div>
         </aside>
 
         <main class="main-content">
@@ -89,13 +114,21 @@
             </div>
             <div id="gnb-preview" class="gnb-preview"></div>
           </section>
-          <footer class="studio-footer"><span>© LG Electronics · Internal planning tool</span><span>GNB governance workspace</span></footer>
+          <footer class="studio-footer"><span>© LG Electronics · Internal planning tool</span><span>Brought to you by Concentrix</span></footer>
         </main>
       </div>
     </section>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div id="country-confirm" class="confirm-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="country-confirm-title">
+      <div class="confirm-card">
+        <h2 id="country-confirm-title">Switch country?</h2>
+        <p>Changes on the current GNB will not be saved. Are you sure you want to switch?</p>
+        <div class="confirm-actions"><button class="outline-button" data-action="cancel-country-switch">No</button><button class="save-button" data-action="confirm-country-switch">Yes</button></div>
+      </div>
+    </div>
   </div>
   <script src="ia-data.js"></script>
+  <script src="assets/xlsx.full.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

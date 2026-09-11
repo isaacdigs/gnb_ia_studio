@@ -5,11 +5,18 @@ const LOCAL_DEVELOPMENT_PASSWORD = "[REDACTED]";
 const AUTH_ENDPOINT = "/.netlify/functions/auth";
 const AUTH_KEY = "lg-gnb-studio-auth";
 const STORAGE_KEY = "lg-gnb-studio-tree-v2";
+const COUNTRY_STORAGE_KEY = "lg-gnb-studio-countries-v1";
+const COUNTRIES = ["Bangladesh", "New Zealand", "Srilanka", "Nepal", "Ukraine", "Uzbekistan_RU", "Uzbekistan", "Bulgaria", "Serbia", "Latvia", "Croatia", "Slovakia", "Denmark", "Finland", "Norway", "Lithuania", "Estonia", "Iran (RTL)"];
 
 const initialTree = buildTree(IA_SOURCE);
-let tree = loadTree() || clone(initialTree);
+const initialCountryState = loadCountryState(COUNTRIES[0]);
+let tree = initialCountryState?.tree || clone(initialTree);
 const defaultSelection = findFirstByLabel(tree, "Solutions") || tree[0];
 const state = {
+  country: COUNTRIES[0],
+  dirty: false,
+  lastSavedAt: initialCountryState?.savedAt || null,
+  pendingCountry: null,
   selectedId: defaultSelection?.id || "",
   previewRootId: rootIdFor(defaultSelection?.id) || tree[0]?.id || "",
   activeChildId: "",
@@ -30,6 +37,9 @@ const ui = {
   treeSummary: document.querySelector("#tree-summary"),
   preview: document.querySelector("#gnb-preview"),
   saveState: document.querySelector("#save-state"),
+  saveButton: document.querySelector("[data-action='save']"),
+  countrySelect: document.querySelector("#country-select"),
+  countryConfirm: document.querySelector("#country-confirm"),
   toast: document.querySelector("#toast"),
 };
 
@@ -89,20 +99,55 @@ function buildTree(rows) {
   return roots;
 }
 
-function loadTree() {
+function isValidTree(candidate) {
+  return Array.isArray(candidate) && candidate.every((node) => node && node.label && Array.isArray(node.children));
+}
+
+function loadCountryStates() {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    return Array.isArray(saved) && saved.every((node) => node && node.label && Array.isArray(node.children)) ? saved : null;
+    const saved = JSON.parse(localStorage.getItem(COUNTRY_STORAGE_KEY) || "{}");
+    return saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {};
   } catch {
-    return null;
+    return {};
   }
 }
 
-function saveTree() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(tree));
-  const now = new Date();
-  const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  ui.saveState.innerHTML = `<span class="save-dot"></span>Saved locally · ${time}`;
+function loadCountryState(country) {
+  const record = loadCountryStates()[country];
+  if (record && isValidTree(record.tree)) return record;
+  if (country === COUNTRIES[0]) {
+    try {
+      const legacyTree = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+      if (isValidTree(legacyTree)) return { tree: legacyTree, savedAt: null };
+    } catch {}
+  }
+  return null;
+}
+
+function savedTimeLabel(savedAt) {
+  if (!savedAt) return "Saved locally";
+  return `Saved locally · ${new Date(savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+}
+
+function renderSaveControls() {
+  ui.saveButton.disabled = !state.dirty;
+  ui.saveState.innerHTML = `<span class="save-dot ${state.dirty ? "is-unsaved" : ""}"></span>${state.dirty ? "Unsaved changes" : savedTimeLabel(state.lastSavedAt)}`;
+}
+
+function markDirty() {
+  state.dirty = true;
+  renderSaveControls();
+}
+
+function saveChanges() {
+  const savedAt = new Date().toISOString();
+  const countries = loadCountryStates();
+  countries[state.country] = { tree: clone(tree), savedAt };
+  localStorage.setItem(COUNTRY_STORAGE_KEY, JSON.stringify(countries));
+  state.lastSavedAt = savedAt;
+  state.dirty = false;
+  renderSaveControls();
+  showToast(`${state.country} IA saved locally.`);
 }
 
 function escapeHtml(value) {
@@ -286,7 +331,7 @@ function toggleNode(id) {
   if (!info) return;
   info.node.enabled = !info.node.enabled;
   state.selectedId = id;
-  saveTree();
+  markDirty();
   render();
   showToast(`${info.node.label} ${info.node.enabled ? "included" : "excluded"} from the preview.`);
 }
@@ -315,7 +360,7 @@ function moveNode(id, targetId, mode = "before") {
   state.selectedId = id;
   state.previewRootId = rootIdFor(id) || state.previewRootId;
   state.activeChildId = "";
-  saveTree();
+  markDirty();
   render();
   showToast(mode === "inside" ? `Nested ${source.node.label} under ${target.node.label}.` : `Moved ${source.node.label}.`);
 }
@@ -326,28 +371,111 @@ function resetTree() {
   state.previewRootId = rootIdFor(state.selectedId) || tree[0]?.id || "";
   state.activeChildId = "";
   state.expanded = new Set(tree.filter((node) => node.depth <= 1).map((node) => node.id));
-  saveTree();
+  markDirty();
   render();
   showToast("IA reset to the workbook baseline.");
 }
 
+function resetViewState() {
+  const selection = findFirstByLabel(tree, "Solutions") || tree[0];
+  state.selectedId = selection?.id || "";
+  state.previewRootId = rootIdFor(selection?.id) || tree[0]?.id || "";
+  state.activeChildId = "";
+  state.expanded = new Set(tree.filter((node) => node.depth <= 1).map((node) => node.id));
+  state.search = "";
+  ui.treeSearch.value = "";
+}
+
+function switchCountry(country) {
+  if (!COUNTRIES.includes(country) || country === state.country) return;
+  const saved = loadCountryState(country);
+  tree = saved?.tree ? clone(saved.tree) : clone(initialTree);
+  state.country = country;
+  state.lastSavedAt = saved?.savedAt || null;
+  state.dirty = false;
+  state.pendingCountry = null;
+  ui.countrySelect.value = country;
+  ui.countryConfirm.classList.add("hidden");
+  resetViewState();
+  renderSaveControls();
+  render();
+  showToast(`${country} IA loaded.`);
+}
+
+function requestCountrySwitch(country) {
+  if (country === state.country) return;
+  if (!state.dirty) {
+    switchCountry(country);
+    return;
+  }
+  state.pendingCountry = country;
+  ui.countrySelect.value = state.country;
+  ui.countryConfirm.classList.remove("hidden");
+  ui.countryConfirm.querySelector("[data-action='cancel-country-switch']").focus();
+}
+
+function exportRows() {
+  const rows = [];
+
+  function visit(node, parents = []) {
+    if (!effectiveEnabled(node)) return;
+    const path = [...parents, node];
+    const children = visibleChildren(node);
+    if (!children.length) {
+      const levels = Array(5).fill("");
+      path.slice(0, 5).forEach((item, index) => { levels[index] = item.label; });
+      rows.push([...levels, path[0]?.external || "", path[0]?.banner || ""]);
+      return;
+    }
+    children.forEach((child) => visit(child, path));
+  }
+
+  tree.forEach((node) => visit(node));
+  return rows;
+}
+
+function hierarchyMerges(rows) {
+  const merges = [{ s: { r: 1, c: 1 }, e: { r: 1, c: 7 } }];
+  for (let column = 0; column < 5; column += 1) {
+    let start = 0;
+    while (start < rows.length) {
+      const label = rows[start][column];
+      let end = start + 1;
+      while (label && end < rows.length && rows[end][column] === label && rows[end].slice(0, column + 1).every((value, index) => value === rows[start][index])) end += 1;
+      if (label && end - start > 1) merges.push({ s: { r: start + 3, c: column + 1 }, e: { r: end + 2, c: column + 1 } });
+      start = end;
+    }
+  }
+  return merges;
+}
+
 function exportIA() {
-  const payload = {
-    exportedAt: new Date().toISOString(),
-    source: IA_META,
-    note: "Effective preview visibility excludes disabled nodes and descendants of disabled parents.",
-    navigation: clone(tree),
-  };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `lg-global-business-gnb-${new Date().toISOString().slice(0, 10)}.json`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-  showToast("IA JSON exported successfully.");
+  if (!window.XLSX) {
+    showToast("Excel export is unavailable. Reload the page and try again.");
+    return;
+  }
+
+  const rows = exportRows();
+  const headers = ["1D", "2D", "3D", "4D", "5D", "External", "Banners"];
+  const sheet = XLSX.utils.aoa_to_sheet([
+    Array(8).fill(""),
+    ["", state.country, "", "", "", "", "", ""],
+    ["", ...headers],
+    ...rows.map((row) => ["", ...row]),
+  ]);
+  sheet["!merges"] = hierarchyMerges(rows);
+  sheet["!cols"] = [{ wch: 5.9 }, { wch: 16.9 }, { wch: 22 }, { wch: 28 }, { wch: 26 }, { wch: 19.9 }, { wch: 18 }, { wch: 27.4 }];
+  sheet["!rows"] = [{ hpt: 15 }, { hpt: 24 }, { hpt: 21 }];
+
+  const titleStyle = { font: { name: "Malgun Gothic", sz: 16, bold: true }, alignment: { horizontal: "center", vertical: "center" } };
+  const headerStyle = { font: { name: "Malgun Gothic", sz: 14, bold: true }, alignment: { horizontal: "center", vertical: "center" } };
+  sheet.B2.s = titleStyle;
+  headers.forEach((_, index) => { sheet[XLSX.utils.encode_cell({ r: 2, c: index + 1 })].s = headerStyle; });
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, "Global");
+  XLSX.writeFile(workbook, `lg-${slug(state.country)}-global-ia-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  showToast(`${state.country} IA exported as Excel.`);
 }
 
 let toastTimer;
@@ -361,6 +489,7 @@ function showToast(message) {
 function showStudio() {
   ui.loginScreen.classList.add("hidden");
   ui.studio.classList.remove("hidden");
+  renderSaveControls();
   render();
 }
 
@@ -383,8 +512,15 @@ function handleAction(action, id) {
     state.expanded = new Set();
     renderTree();
   }
+  if (action === "save") saveChanges();
   if (action === "reset") resetTree();
   if (action === "export") exportIA();
+  if (action === "confirm-country-switch" && state.pendingCountry) switchCountry(state.pendingCountry);
+  if (action === "cancel-country-switch") {
+    state.pendingCountry = null;
+    ui.countryConfirm.classList.add("hidden");
+    ui.countrySelect.focus();
+  }
   if (action === "logout") {
     sessionStorage.removeItem(AUTH_KEY);
     ui.studio.classList.add("hidden");
@@ -443,6 +579,8 @@ document.addEventListener("input", (event) => {
     renderTree();
   }
 });
+
+ui.countrySelect.addEventListener("change", (event) => requestCountrySwitch(event.target.value));
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "/" && document.activeElement !== ui.treeSearch && document.activeElement !== ui.passwordInput) {
