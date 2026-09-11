@@ -18,6 +18,7 @@ const state = {
   authToken: sessionStorage.getItem(AUTH_TOKEN_KEY) || "",
   country: COUNTRIES[0],
   dirty: false,
+  isSaving: false,
   lastSavedAt: initialCountryState?.savedAt || null,
   pendingCountry: null,
   selectedId: defaultSelection?.id || "",
@@ -168,7 +169,7 @@ function savedTimeLabel(savedAt) {
 }
 
 function renderSaveControls() {
-  ui.saveButton.disabled = !state.dirty;
+  ui.saveButton.disabled = !state.dirty || state.isSaving;
   ui.saveState.innerHTML = `<span class="save-dot ${state.dirty ? "is-unsaved" : ""}"></span>${state.dirty ? "Unsaved changes" : savedTimeLabel(state.lastSavedAt)}`;
 }
 
@@ -178,7 +179,9 @@ function markDirty() {
 }
 
 async function saveChanges() {
-  ui.saveButton.disabled = true;
+  if (!state.dirty || state.isSaving) return;
+  state.isSaving = true;
+  renderSaveControls();
   try {
     const record = await saveCountryState(state.country, tree);
     state.lastSavedAt = record.savedAt;
@@ -186,8 +189,10 @@ async function saveChanges() {
     renderSaveControls();
     showToast(`${state.country} IA saved${isSharedSession() ? " for the team" : " locally"}.`);
   } catch {
-    renderSaveControls();
     showToast("Could not save the shared IA. Your changes are still open here.");
+  } finally {
+    state.isSaving = false;
+    renderSaveControls();
   }
 }
 
@@ -443,13 +448,27 @@ async function switchCountry(country, { force = false } = {}) {
     render();
     showToast(`${country} IA loaded.`);
   } catch {
-    ui.countrySelect.value = state.country;
-    showToast("Could not load the shared IA. Please try again.");
+    tree = clone(initialTree);
+    state.country = country;
+    state.lastSavedAt = null;
+    state.dirty = false;
+    state.pendingCountry = null;
+    ui.countrySelect.value = country;
+    ui.countryConfirm.classList.add("hidden");
+    resetViewState();
+    renderSaveControls();
+    render();
+    showToast("Could not load the shared IA. Showing the workbook baseline.");
   }
 }
 
 function requestCountrySwitch(country) {
   if (country === state.country) return;
+  if (state.isSaving) {
+    ui.countrySelect.value = state.country;
+    showToast("Saving changes. Please wait before switching countries.");
+    return;
+  }
   if (!state.dirty) {
     switchCountry(country);
     return;
@@ -535,6 +554,9 @@ function showToast(message) {
 async function showStudio() {
   ui.loginScreen.classList.add("hidden");
   ui.studio.classList.remove("hidden");
+  resetViewState();
+  renderSaveControls();
+  render();
   await switchCountry(state.country, { force: true });
 }
 

@@ -41,6 +41,11 @@ test("authenticated studios load and save the shared country IA through the Netl
   assert.match(app, /countryApiHeaders\(\)/);
 });
 
+test("studio renders the baseline before a country request and blocks switching while saving", () => {
+  assert.match(app, /async function showStudio\(\)[\s\S]*resetViewState\(\);[\s\S]*render\(\);[\s\S]*await switchCountry/);
+  assert.match(app, /state\.isSaving/);
+});
+
 test("export produces a country-specific Excel Global sheet in the source IA shape", () => {
   assert.match(html, /assets\/xlsx\.full\.min\.js/);
   assert.match(app, /function exportRows\(\)/);
