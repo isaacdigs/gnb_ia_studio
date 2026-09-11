@@ -30,8 +30,15 @@ test("IA explorer replaces the tree badge and permanent tip with a hoverable hel
 test("country-aware draft state requires an explicit save and warns before discarding it", () => {
   assert.match(app, /COUNTRY_STORAGE_KEY/);
   assert.match(app, /function saveChanges\(\)/);
-  assert.match(app, /function switchCountry\(country\)/);
+  assert.match(app, /async function switchCountry\(country/);
   assert.match(html, /Changes on the current GNB will not be saved\. Are you sure you want to switch\?/);
+});
+
+test("authenticated studios load and save the shared country IA through the Netlify API", () => {
+  assert.match(app, /COUNTRY_IA_ENDPOINT/);
+  assert.match(app, /function fetchCountryState\(country\)/);
+  assert.match(app, /async function saveCountryState\(country, nextTree\)/);
+  assert.match(app, /countryApiHeaders\(\)/);
 });
 
 test("export produces a country-specific Excel Global sheet in the source IA shape", () => {

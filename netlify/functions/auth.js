@@ -1,4 +1,5 @@
 const crypto = require("node:crypto");
+const { issueToken } = require("./auth-token");
 
 const headers = {
   "Cache-Control": "no-store",
@@ -32,6 +33,6 @@ exports.handler = async (event) => {
   return {
     statusCode: authenticated ? 200 : 401,
     headers,
-    body: JSON.stringify({ authenticated }),
+    body: JSON.stringify(authenticated ? { authenticated, token: issueToken(configuredPassword) } : { authenticated }),
   };
 };

@@ -4,15 +4,18 @@ const { IA_SOURCE, IA_META } = window;
 const LOCAL_DEVELOPMENT_PASSWORD = "[REDACTED]";
 const AUTH_ENDPOINT = "/.netlify/functions/auth";
 const AUTH_KEY = "lg-gnb-studio-auth";
+const AUTH_TOKEN_KEY = "lg-gnb-studio-token";
+const COUNTRY_IA_ENDPOINT = "/.netlify/functions/country-ia";
 const STORAGE_KEY = "lg-gnb-studio-tree-v2";
 const COUNTRY_STORAGE_KEY = "lg-gnb-studio-countries-v1";
 const COUNTRIES = ["Bangladesh", "New Zealand", "Srilanka", "Nepal", "Ukraine", "Uzbekistan_RU", "Uzbekistan", "Bulgaria", "Serbia", "Latvia", "Croatia", "Slovakia", "Denmark", "Finland", "Norway", "Lithuania", "Estonia", "Iran (RTL)"];
 
 const initialTree = buildTree(IA_SOURCE);
-const initialCountryState = loadCountryState(COUNTRIES[0]);
+const initialCountryState = sessionStorage.getItem(AUTH_TOKEN_KEY) ? null : loadCountryState(COUNTRIES[0]);
 let tree = initialCountryState?.tree || clone(initialTree);
 const defaultSelection = findFirstByLabel(tree, "Solutions") || tree[0];
 const state = {
+  authToken: sessionStorage.getItem(AUTH_TOKEN_KEY) || "",
   country: COUNTRIES[0],
   dirty: false,
   lastSavedAt: initialCountryState?.savedAt || null,
@@ -124,9 +127,44 @@ function loadCountryState(country) {
   return null;
 }
 
+function isSharedSession() {
+  return Boolean(state.authToken);
+}
+
+function countryApiHeaders() {
+  return isSharedSession() ? { Authorization: `Bearer ${state.authToken}` } : {};
+}
+
+async function fetchCountryState(country) {
+  if (!isSharedSession()) return loadCountryState(country);
+  const response = await fetch(`${COUNTRY_IA_ENDPOINT}?country=${encodeURIComponent(country)}`, { headers: countryApiHeaders() });
+  if (!response.ok) throw new Error("Unable to load the shared IA");
+  const { record } = await response.json();
+  return record && isValidTree(record.tree) ? record : null;
+}
+
+async function saveCountryState(country, nextTree) {
+  if (!isSharedSession()) {
+    const savedAt = new Date().toISOString();
+    const countries = loadCountryStates();
+    countries[country] = { tree: clone(nextTree), savedAt };
+    localStorage.setItem(COUNTRY_STORAGE_KEY, JSON.stringify(countries));
+    return countries[country];
+  }
+
+  const response = await fetch(`${COUNTRY_IA_ENDPOINT}?country=${encodeURIComponent(country)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...countryApiHeaders() },
+    body: JSON.stringify({ tree: nextTree }),
+  });
+  if (!response.ok) throw new Error("Unable to save the shared IA");
+  return (await response.json()).record;
+}
+
 function savedTimeLabel(savedAt) {
-  if (!savedAt) return "Saved locally";
-  return `Saved locally · ${new Date(savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  const location = isSharedSession() ? "Saved for team" : "Saved locally";
+  if (!savedAt) return location;
+  return `${location} · ${new Date(savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 }
 
 function renderSaveControls() {
@@ -139,15 +177,18 @@ function markDirty() {
   renderSaveControls();
 }
 
-function saveChanges() {
-  const savedAt = new Date().toISOString();
-  const countries = loadCountryStates();
-  countries[state.country] = { tree: clone(tree), savedAt };
-  localStorage.setItem(COUNTRY_STORAGE_KEY, JSON.stringify(countries));
-  state.lastSavedAt = savedAt;
-  state.dirty = false;
-  renderSaveControls();
-  showToast(`${state.country} IA saved locally.`);
+async function saveChanges() {
+  ui.saveButton.disabled = true;
+  try {
+    const record = await saveCountryState(state.country, tree);
+    state.lastSavedAt = record.savedAt;
+    state.dirty = false;
+    renderSaveControls();
+    showToast(`${state.country} IA saved${isSharedSession() ? " for the team" : " locally"}.`);
+  } catch {
+    renderSaveControls();
+    showToast("Could not save the shared IA. Your changes are still open here.");
+  }
 }
 
 function escapeHtml(value) {
@@ -386,20 +427,25 @@ function resetViewState() {
   ui.treeSearch.value = "";
 }
 
-function switchCountry(country) {
-  if (!COUNTRIES.includes(country) || country === state.country) return;
-  const saved = loadCountryState(country);
-  tree = saved?.tree ? clone(saved.tree) : clone(initialTree);
-  state.country = country;
-  state.lastSavedAt = saved?.savedAt || null;
-  state.dirty = false;
-  state.pendingCountry = null;
-  ui.countrySelect.value = country;
-  ui.countryConfirm.classList.add("hidden");
-  resetViewState();
-  renderSaveControls();
-  render();
-  showToast(`${country} IA loaded.`);
+async function switchCountry(country, { force = false } = {}) {
+  if (!COUNTRIES.includes(country) || (!force && country === state.country)) return;
+  try {
+    const saved = await fetchCountryState(country);
+    tree = saved?.tree ? clone(saved.tree) : clone(initialTree);
+    state.country = country;
+    state.lastSavedAt = saved?.savedAt || null;
+    state.dirty = false;
+    state.pendingCountry = null;
+    ui.countrySelect.value = country;
+    ui.countryConfirm.classList.add("hidden");
+    resetViewState();
+    renderSaveControls();
+    render();
+    showToast(`${country} IA loaded.`);
+  } catch {
+    ui.countrySelect.value = state.country;
+    showToast("Could not load the shared IA. Please try again.");
+  }
 }
 
 function requestCountrySwitch(country) {
@@ -486,11 +532,10 @@ function showToast(message) {
   toastTimer = setTimeout(() => ui.toast.classList.remove("show"), 2600);
 }
 
-function showStudio() {
+async function showStudio() {
   ui.loginScreen.classList.add("hidden");
   ui.studio.classList.remove("hidden");
-  renderSaveControls();
-  render();
+  await switchCountry(state.country, { force: true });
 }
 
 function handleAction(action, id) {
@@ -523,6 +568,8 @@ function handleAction(action, id) {
   }
   if (action === "logout") {
     sessionStorage.removeItem(AUTH_KEY);
+    sessionStorage.removeItem(AUTH_TOKEN_KEY);
+    state.authToken = "";
     ui.studio.classList.add("hidden");
     ui.loginScreen.classList.remove("hidden");
     ui.passwordInput.value = "";
@@ -539,9 +586,9 @@ async function authenticatePassword(password) {
       body: JSON.stringify({ password }),
     });
     const result = await response.json();
-    return result.authenticated === true;
+    return { authenticated: result.authenticated === true, token: result.token || "" };
   } catch {
-    return isLocal && password === LOCAL_DEVELOPMENT_PASSWORD;
+    return { authenticated: isLocal && password === LOCAL_DEVELOPMENT_PASSWORD, token: "" };
   }
 }
 
@@ -550,11 +597,13 @@ ui.loginForm.addEventListener("submit", async (event) => {
   const submitButton = ui.loginForm.querySelector("button[type='submit']");
   submitButton.disabled = true;
   submitButton.textContent = "Checking…";
-  const authenticated = await authenticatePassword(ui.passwordInput.value);
+  const authentication = await authenticatePassword(ui.passwordInput.value);
   submitButton.disabled = false;
   submitButton.innerHTML = "Enter studio <span aria-hidden='true'>→</span>";
-  if (authenticated) {
+  if (authentication.authenticated) {
     sessionStorage.setItem(AUTH_KEY, "1");
+    state.authToken = authentication.token;
+    if (state.authToken) sessionStorage.setItem(AUTH_TOKEN_KEY, state.authToken);
     ui.loginError.textContent = "";
     showStudio();
   } else {
@@ -645,5 +694,8 @@ document.querySelector("[data-action='reveal-password']").addEventListener("clic
   event.currentTarget.setAttribute("aria-label", visible ? "Show password" : "Hide password");
 });
 
-if (sessionStorage.getItem(AUTH_KEY) === "1") showStudio();
-else ui.passwordInput.focus();
+if (sessionStorage.getItem(AUTH_KEY) === "1" && state.authToken) showStudio();
+else {
+  sessionStorage.removeItem(AUTH_KEY);
+  ui.passwordInput.focus();
+}
