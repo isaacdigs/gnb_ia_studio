@@ -200,8 +200,8 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(234, 25, 23,
 .menu-list .disabled-menu { color: #96928c; text-decoration: line-through; }
 .menu-overflow { display: flex; align-items: center; justify-content: center; min-height: 100px; color: #77736d; font-size: 13px; }
 .studio-footer { display: flex; justify-content: space-between; max-width: 1260px; margin: 29px auto 0; padding-top: 16px; border-top: 1px solid #e2e2e4; color: #a6a7ab; font-size: 9px; }
-.toast { position: fixed; right: 25px; bottom: 25px; z-index: 20; max-width: min(360px, calc(100% - 40px)); padding: 12px 15px; border-radius: 3px; background: #1a1a1c; color: #fff; font-size: 11px; box-shadow: var(--shadow-lg); opacity: 0; pointer-events: none; transform: translateY(12px); transition: opacity .2s, transform .2s; }
-.toast.show { opacity: 1; transform: translateY(0); }
+.toast { position: fixed; top: 128px; left: 50%; z-index: 20; max-width: min(360px, calc(100% - 40px)); padding: 12px 15px; border-radius: 3px; background: #1a1a1c; color: #fff; font-size: 11px; box-shadow: var(--shadow-lg); opacity: 0; pointer-events: none; transform: translate(-50%, -12px); transition: opacity .2s, transform .2s; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
 .confirm-dialog { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 20px; background: rgba(17,17,19,.42); }
 .confirm-card { width: min(100%, 400px); padding: 26px; border-radius: 4px; background: #fff; box-shadow: var(--shadow-lg); }
 .confirm-card h2 { margin: 0 0 10px; font-size: 18px; letter-spacing: -.03em; }
