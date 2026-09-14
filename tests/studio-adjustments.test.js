@@ -171,3 +171,17 @@ test("the HVAC baseline follows the current Global IA menu", () => {
     ["Insights"],
   ]);
 });
+
+test("Commercial Display baseline includes LG E-paper display under New & Featured", () => {
+  const ePaper = sourceIa().find((row) => row.label === "LG E-paper display");
+
+  assert.deepEqual(JSON.parse(JSON.stringify(ePaper?.levels)), [
+    null,
+    null,
+    "New & Featured",
+    "LG E-paper display",
+    null,
+  ]);
+  assert.match(app, /function reconcileCommercialDisplayBaseline\(roots\)/);
+  assert.match(app, /reconcileCommercialDisplayBaseline\(reconcileHvacBaseline\(clone\(candidate\)\)\)/);
+});

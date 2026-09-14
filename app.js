@@ -174,8 +174,25 @@ function reconcileHvacBaseline(roots) {
   return roots;
 }
 
+function findCommercialDisplayBranch(roots) {
+  const solutions = roots.find((node) => node.label.trim().toLowerCase() === "solutions");
+  return solutions?.children.find((node) => node.label.trim().toLowerCase() === "commercial display") || null;
+}
+
+function reconcileCommercialDisplayBaseline(roots) {
+  const existingCommercialDisplay = findCommercialDisplayBranch(roots);
+  const baselineCommercialDisplay = findCommercialDisplayBranch(initialTree);
+  if (!existingCommercialDisplay || !baselineCommercialDisplay) return roots;
+
+  const replacement = clone(baselineCommercialDisplay);
+  preserveHvacSettings(existingCommercialDisplay, replacement, ["solutions"]);
+  const solutions = roots.find((node) => node.label.trim().toLowerCase() === "solutions");
+  solutions.children.splice(solutions.children.indexOf(existingCommercialDisplay), 1, replacement);
+  return roots;
+}
+
 function normalizeTree(candidate) {
-  const normalized = reconcileHvacBaseline(clone(candidate));
+  const normalized = reconcileCommercialDisplayBaseline(reconcileHvacBaseline(clone(candidate)));
   eachNode(normalized, (node) => {
     node.destination = canSetExternalLink(node) && node.destination === "External Link" ? "External Link" : "Local Page";
     node.linkType = node.destination === "External Link" && ["Global", "Regional"].includes(node.linkType) ? node.linkType : "";

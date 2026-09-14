@@ -589,6 +589,20 @@ window.IA_SOURCE = [
     "banner": null
   },
   {
+    "sourceRow": 47.5,
+    "depth": 4,
+    "label": "LG E-paper display",
+    "levels": [
+      null,
+      null,
+      "New & Featured",
+      "LG E-paper display",
+      null
+    ],
+    "external": null,
+    "banner": null
+  },
+  {
     "sourceRow": 48,
     "depth": 3,
     "label": "LED Signage",
