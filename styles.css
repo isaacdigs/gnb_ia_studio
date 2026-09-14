@@ -171,10 +171,10 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(234, 25, 23,
 .gnb-nav-item .nav-caret { display: none; }
 .gnb-utilities { display: flex; align-items: center; gap: 22px; margin-left: auto; padding-left: 20px; color: #111; }
 .gnb-consumer { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: #111; font-family: "LGEI Text", "Segoe UI", "Microsoft Sans Serif", sans-serif; font-size: 14px; font-weight: 400; text-decoration: none; white-space: nowrap; }
-.gnb-consumer:hover { text-decoration: underline; text-underline-offset: 4px; }
+.gnb-consumer:hover .consumer-label { text-decoration: underline; text-underline-offset: 4px; }
 .consumer-arrow { font-size: 17px; line-height: 1; }
-.gnb-contact { align-items: center; background-color: rgb(234, 25, 23); background-image: none; border: 1px solid rgb(234, 25, 23); border-radius: 999px; box-sizing: border-box; color: rgb(255, 255, 255); cursor: pointer; display: inline-flex; font-family: "LGEI Text", "Segoe UI", "Microsoft Sans Serif", sans-serif; font-size: 14px; font-style: normal; font-weight: 600; height: 36px; justify-content: center; line-height: 14px; min-width: 80px; outline-offset: 0; padding: 0 16px; text-align: center; text-decoration: none; transition: background .3s ease, color .2s ease, border-color .3s ease; white-space: nowrap; -webkit-font-smoothing: antialiased; }
-.gnb-contact:hover { background-color: rgb(190, 18, 16); border-color: rgb(190, 18, 16); color: #fff; }
+.gnb-contact { align-items: center; width: 102px; min-width: 80px; height: 36px; padding: 0 16px; border: 1px solid rgb(234, 25, 23); border-radius: 6px; background: rgb(234, 25, 23); color: rgb(255, 255, 255); cursor: pointer; display: inline-flex; justify-content: center; box-sizing: border-box; font-family: "LGEI Text", "Segoe UI", "Microsoft Sans Serif", sans-serif; font-size: 14px; font-style: normal; font-weight: 600; line-height: 14px; outline-offset: 0; text-align: center; text-decoration: none; transition: background .3s ease, color .2s ease, border-color .3s ease; white-space: nowrap; -webkit-font-smoothing: antialiased; }
+.gnb-contact:hover { border-color: #747474; background: #fff; color: #111; }
 .gnb-search { position: relative; display: inline-block; width: 27px; height: 32px; padding: 0; border: 0; background: transparent; }
 .gnb-search::before { position: absolute; top: 5px; left: 2px; width: 15px; height: 15px; border: 1.7px solid #111; border-radius: 50%; content: ""; }
 .gnb-search::after { position: absolute; top: 20px; left: 17px; width: 8px; height: 1.7px; background: #111; content: ""; transform: rotate(48deg); transform-origin: left center; }

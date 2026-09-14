@@ -131,7 +131,7 @@ function trimWhyLgDescendants(roots) {
 }
 
 function canSetExternalLink(node) {
-  return node.depth >= 3;
+  return node.depth >= 2;
 }
 
 function isValidTree(candidate) {
@@ -193,6 +193,13 @@ function reconcileCommercialDisplayBaseline(roots) {
 
 function normalizeTree(candidate) {
   const normalized = reconcileCommercialDisplayBaseline(reconcileHvacBaseline(clone(candidate)));
+  const existingInsights = normalized.find((node) => node.label.trim().toLowerCase() === "insights");
+  const baselineInsights = initialTree.find((node) => node.label.trim().toLowerCase() === "insights");
+  if (existingInsights && baselineInsights) {
+    const replacement = clone(baselineInsights);
+    preserveHvacSettings(existingInsights, replacement, ["insights"]);
+    normalized.splice(normalized.indexOf(existingInsights), 1, replacement);
+  }
   eachNode(normalized, (node) => {
     node.destination = canSetExternalLink(node) && node.destination === "External Link" ? "External Link" : "Local Page";
     node.linkType = node.destination === "External Link" && ["Global", "Regional"].includes(node.linkType) ? node.linkType : "";
@@ -436,7 +443,7 @@ function renderPreview() {
   }).join("");
 
   const menu = activeRoot ? renderMenuPanel(activeRoot) : `<div class="menu-overflow">No active navigation items.</div>`;
-  ui.preview.innerHTML = `<div class="gnb-mainbar"><div class="gnb-logo">${logoMarkup()}</div><nav class="gnb-nav" aria-label="Business navigation">${nav}</nav><div class="gnb-utilities"><a class="gnb-consumer" href="#consumer">Consumer <span class="consumer-arrow" aria-hidden="true">↗</span></a><button class="gnb-contact" type="button">Contact us</button><button class="gnb-search" type="button" aria-label="Search"></button></div></div>${menu}`;
+  ui.preview.innerHTML = `<div class="gnb-mainbar"><div class="gnb-logo">${logoMarkup()}</div><nav class="gnb-nav" aria-label="Business navigation">${nav}</nav><div class="gnb-utilities"><a class="gnb-consumer" href="#consumer"><span class="consumer-label">Consumer</span><span class="consumer-arrow" aria-hidden="true">↗</span></a><button class="gnb-contact" type="button">Contact us</button><button class="gnb-search" type="button" aria-label="Search"></button></div></div>${menu}`;
 }
 
 function renderPreviewLinkDetails(node) {
@@ -455,8 +462,9 @@ function renderMenuPanel(root) {
   const activeChild = children.find((child) => child.id === state.activeChildId) || preferredChild || children[0];
   state.activeChildId = activeChild?.id || "";
   const subnav = children.length ? `<div class="gnb-subnav" aria-label="${escapeHtml(root.label)} categories">${children.map((child) => `<button class="gnb-subnav-item ${child.id === activeChild?.id ? "active" : ""}" data-action="preview-child" data-id="${child.id}">${menuLabel(child)}</button>`).join("")}</div>` : "";
-  const menuNodes = activeChild ? (activeChild.children.length ? visibleChildren(activeChild) : [activeChild]) : [];
-  return `${subnav}<div class="gnb-menu-panel">${menuNodes.length ? renderMenuColumns(menuNodes) : `<div class="menu-overflow">This item has no nested categories yet.</div>`}</div>`;
+  const menuNodes = activeChild?.children.length ? visibleChildren(activeChild) : [];
+  const menuPanel = menuNodes.length ? `<div class="gnb-menu-panel">${renderMenuColumns(menuNodes)}</div>` : "";
+  return `${subnav}${menuPanel}`;
 }
 
 function renderMenuColumns(nodes) {
@@ -467,7 +475,7 @@ function renderMenuColumns(nodes) {
 }
 
 function renderMenuNode(node) {
-  const children = visibleChildren(node);
+  const children = node.depth < 4 ? visibleChildren(node) : [];
   const className = children.length ? "group" : "";
   return `<li class="${className}"><span>${menuLabel(node)}</span>${children.length ? `<ul>${children.map(renderMenuNode).join("")}</ul>` : ""}</li>`;
 }
@@ -641,33 +649,16 @@ function exportRows() {
   function visit(node, parents = []) {
     if (!effectiveEnabled(node)) return;
     const path = [...parents, node];
-    const children = visibleChildren(node);
-    if (!children.length) {
-      const levels = Array(5).fill("");
-      path.slice(0, 5).forEach((item, index) => { levels[index] = item.label; });
-      rows.push([...levels, path[0]?.external || "", path[0]?.banner || "", node.destination || "Local Page", node.destination === "External Link" ? node.linkType || "" : "", node.destination === "External Link" ? node.linkUrl || "" : ""]);
-      return;
+    const levels = Array(5).fill("");
+    path.slice(0, 5).forEach((item, index) => { levels[index] = item.label; });
+    rows.push([...levels, node.destination || "Local Page", node.destination === "External Link" ? node.linkType || "" : "", node.destination === "External Link" ? node.linkUrl || "" : ""]);
+    for (const child of visibleChildren(node)) {
+      visit(child, path);
     }
-    children.forEach((child) => visit(child, path));
   }
 
   tree.forEach((node) => visit(node));
   return rows;
-}
-
-function hierarchyMerges(rows) {
-  const merges = [{ s: { r: 1, c: 1 }, e: { r: 1, c: 10 } }];
-  for (let column = 0; column < 5; column += 1) {
-    let start = 0;
-    while (start < rows.length) {
-      const label = rows[start][column];
-      let end = start + 1;
-      while (label && end < rows.length && rows[end][column] === label && rows[end].slice(0, column + 1).every((value, index) => value === rows[start][index])) end += 1;
-      if (label && end - start > 1) merges.push({ s: { r: start + 3, c: column + 1 }, e: { r: end + 2, c: column + 1 } });
-      start = end;
-    }
-  }
-  return merges;
 }
 
 function exportIA() {
@@ -677,21 +668,23 @@ function exportIA() {
   }
 
   const rows = exportRows();
-  const headers = ["1D", "2D", "3D", "4D", "5D", "External", "Banners", "Destination", "Link-type", "Link-URL"];
+  const headers = ["1D", "2D", "3D", "4D", "5D", "Destination", "Link-type", "Link-URL"];
   const sheet = XLSX.utils.aoa_to_sheet([
-    Array(11).fill(""),
-    ["", state.country, "", "", "", "", "", "", "", "", ""],
+    Array(9).fill(""),
+    ["", state.country, "", "", "", "", "", "", ""],
     ["", ...headers],
     ...rows.map((row) => ["", ...row]),
   ]);
-  sheet["!merges"] = hierarchyMerges(rows);
-  sheet["!cols"] = [{ wch: 5.9 }, { wch: 16.9 }, { wch: 22 }, { wch: 28 }, { wch: 26 }, { wch: 19.9 }, { wch: 18 }, { wch: 27.4 }, { wch: 18 }, { wch: 16 }, { wch: 42 }];
+  sheet["!cols"] = [{ wch: 5.9 }, { wch: 16.9 }, { wch: 22 }, { wch: 28 }, { wch: 26 }, { wch: 19.9 }, { wch: 18 }, { wch: 16 }, { wch: 42 }];
   sheet["!rows"] = [{ hpt: 15 }, { hpt: 24 }, { hpt: 21 }];
 
-  const titleStyle = { font: { name: "Malgun Gothic", sz: 16, bold: true }, alignment: { horizontal: "center", vertical: "center" } };
-  const headerStyle = { font: { name: "Malgun Gothic", sz: 14, bold: true }, alignment: { horizontal: "center", vertical: "center" } };
+  const border = { top: { style: "thin", color: { rgb: "000000" } }, bottom: { style: "thin", color: { rgb: "000000" } }, left: { style: "thin", color: { rgb: "000000" } }, right: { style: "thin", color: { rgb: "000000" } } };
+  const titleStyle = { font: { name: "Malgun Gothic", sz: 16, bold: true }, alignment: { horizontal: "left", vertical: "center" } };
+  const headerStyle = { font: { name: "Malgun Gothic", sz: 11, bold: true, color: { rgb: "FFFFFF" } }, fill: { patternType: "solid", fgColor: { rgb: "404040" } }, border, alignment: { horizontal: "left", vertical: "center" } };
+  const dataStyle = { font: { name: "Malgun Gothic", sz: 11 }, border, alignment: { horizontal: "left", vertical: "center" } };
   sheet.B2.s = titleStyle;
   headers.forEach((_, index) => { sheet[XLSX.utils.encode_cell({ r: 2, c: index + 1 })].s = headerStyle; });
+  rows.forEach((row, rowIndex) => row.forEach((_, columnIndex) => { sheet[XLSX.utils.encode_cell({ r: rowIndex + 3, c: columnIndex + 1 })].s = dataStyle; }));
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, sheet, "Global");

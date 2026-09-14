@@ -2615,6 +2615,25 @@ window.IA_SOURCE.splice(1, 19, ...[
   banner: null,
 })));
 
+// Keep Insights aligned with the Solutions second-depth menu while intentionally omitting all lower depths.
+const solutionDepthTwoLabels = [];
+let activeRootLabel = "";
+for (const row of window.IA_SOURCE) {
+  if (row.levels[0]) activeRootLabel = row.levels[0];
+  if (activeRootLabel === "Solutions" && row.levels[1] && !solutionDepthTwoLabels.includes(row.levels[1])) solutionDepthTwoLabels.push(row.levels[1]);
+}
+const insightsIndex = window.IA_SOURCE.findIndex((row) => row.levels[0] === "Insights");
+if (insightsIndex >= 0) {
+  window.IA_SOURCE.splice(insightsIndex + 1, 0, ...solutionDepthTwoLabels.map((label, index) => ({
+    sourceRow: 9000 + index,
+    depth: 2,
+    label,
+    levels: [null, label, null, null, null],
+    external: null,
+    banner: null,
+  })));
+}
+
 window.IA_EXTRAS = [
   {
     "sourceRow": 5,

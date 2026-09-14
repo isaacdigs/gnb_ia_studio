@@ -15,6 +15,27 @@ function sourceIa() {
   return context.window.IA_SOURCE;
 }
 
+function exportRowsFor(tree) {
+  const start = app.indexOf("function exportRows()");
+  const end = app.indexOf("\nfunction exportIA()", start);
+  const source = app.slice(start, end);
+  return new Function("tree", "effectiveEnabled", "visibleChildren", `${source}; return exportRows;`)(
+    tree,
+    (node) => node.enabled !== false,
+    (node) => node.children.filter((child) => child.enabled !== false),
+  )();
+}
+
+function renderMenuNodeFor(node) {
+  const start = app.indexOf("function renderMenuNode(node)");
+  const end = app.indexOf("\nfunction render()", start);
+  const source = app.slice(start, end);
+  return new Function("visibleChildren", "menuLabel", `${source}; return renderMenuNode;`)(
+    (candidate) => candidate.children.filter((child) => child.enabled !== false),
+    (candidate) => candidate.label,
+  )(node);
+}
+
 const countries = [
   "Bangladesh", "New Zealand", "Srilanka", "Nepal", "Ukraine", "Uzbekistan_RU",
   "Uzbekistan", "Bulgaria", "Serbia", "Latvia", "Croatia", "Slovakia", "Denmark",
@@ -55,10 +76,13 @@ test("studio renders the baseline before a country request and blocks switching 
 });
 
 test("export produces a country-specific Excel Global sheet in the source IA shape", () => {
-  assert.match(html, /assets\/xlsx\.full\.min\.js/);
+  assert.match(html, /assets\/xlsx-js-style\.bundle\.js/);
   assert.match(app, /function exportRows\(\)/);
   assert.match(app, /XLSX\.writeFile/);
-  assert.match(app, /"1D", "2D", "3D", "4D", "5D", "External", "Banners"/);
+  assert.match(app, /"1D", "2D", "3D", "4D", "5D", "Destination", "Link-type", "Link-URL"/);
+  assert.doesNotMatch(app, /"External", "Banners"/);
+  assert.match(app, /fgColor: \{ rgb: "404040" \}/);
+  assert.match(app, /color: \{ rgb: "FFFFFF" \}/);
   assert.match(app, /lg-\$\{slug\(state\.country\)\}-global-ia-/);
 });
 
@@ -68,12 +92,35 @@ test("export and logout controls use the requested visual treatment", () => {
   assert.match(html, /Brought to you by Concentrix/);
 });
 
-test("only depth-three-and-deeper IA nodes can become external links", () => {
+test("depth-two-and-deeper IA nodes can become external links", () => {
   assert.match(app, /destination: "Local Page"/);
   assert.match(app, /data-action="toggle-destination"/);
   assert.match(app, /function canSetExternalLink\(node\)/);
-  assert.match(app, /node\.depth >= 3/);
+  assert.match(app, /node\.depth >= 2/);
   assert.match(app, /if \(!info \|\| !canSetExternalLink\(info\.node\)\) return;/);
+});
+
+test("export writes one unmerged row for every enabled IA depth", () => {
+  assert.match(app, /const path = \[\.\.\.parents, node\];[\s\S]*rows\.push\(\[\.\.\.levels/);
+  assert.match(app, /for \(const child of visibleChildren\(node\)\) \{[\s\S]*visit\(child, path\);/);
+  assert.doesNotMatch(app, /function hierarchyMerges\(/);
+  assert.doesNotMatch(app, /sheet\["!merges"\]/);
+
+  const rows = exportRowsFor([
+    {
+      label: "Solutions", enabled: true, external: null, banner: null, destination: "Local Page", linkType: "", linkUrl: "", children: [
+        { label: "HVAC", enabled: true, destination: "External Link", linkType: "Global", linkUrl: "https://www.lg.com/global/business/hvac/", children: [
+          { label: "Commercial Solutions", enabled: true, destination: "Local Page", linkType: "", linkUrl: "", children: [] },
+        ] },
+      ],
+    },
+  ]);
+
+  assert.deepEqual(rows, [
+    ["Solutions", "", "", "", "", "Local Page", "", ""],
+    ["Solutions", "HVAC", "", "", "", "External Link", "Global", "https://www.lg.com/global/business/hvac/"],
+    ["Solutions", "HVAC", "Commercial Solutions", "", "", "Local Page", "", ""],
+  ]);
 });
 
 test("external-link editing is anchored beside its preview icon above the menu panel", () => {
@@ -131,11 +178,47 @@ test("static build emits country route entry points for direct local preview acc
 
 test("Why LG is a two-depth branch and country selection is reflected in the URL", () => {
   assert.match(app, /function trimWhyLgDescendants\(/);
+  assert.match(app, /const menuNodes = activeChild\?\.children\.length \? visibleChildren\(activeChild\) : \[\];/);
+  assert.match(app, /const menuPanel = menuNodes\.length \? `<div class="gnb-menu-panel">\$\{renderMenuColumns\(menuNodes\)\}<\/div>` : "";/);
   assert.match(app, /COUNTRY_PATHS/);
   assert.match(app, /Bangladesh: "bd"/);
   assert.match(app, /function countryFromPath\(/);
   assert.match(app, /history\.replaceState/);
   assert.match(app, /window\.addEventListener\("popstate"/);
+});
+
+test("Insights copies only the Solutions second-depth labels", () => {
+  const rows = sourceIa();
+  const solutions = [];
+  let activeRoot = "";
+  for (const row of rows) {
+    if (row.levels[0]) activeRoot = row.levels[0];
+    if (activeRoot === "Solutions" && row.levels[1] && !solutions.includes(row.levels[1])) solutions.push(row.levels[1]);
+  }
+  const insightsIndex = rows.findIndex((row) => row.levels[0] === "Insights");
+  const nextRootIndex = rows.findIndex((row, index) => index > insightsIndex && row.levels[0]);
+  const insights = rows.slice(insightsIndex + 1, nextRootIndex < 0 ? undefined : nextRootIndex);
+
+  assert.deepEqual(JSON.parse(JSON.stringify(insights.map((row) => row.levels[1]))), solutions);
+  assert.ok(insights.every((row) => row.levels.slice(2).every((label) => label === null)));
+  assert.match(app, /const baselineInsights = initialTree\.find/);
+});
+
+test("Consumer hover underlines its label without underlining the external-link arrow", () => {
+  assert.match(app, /<span class="consumer-label">Consumer<\/span><span class="consumer-arrow"/);
+  assert.match(css, /\.gnb-consumer:hover \.consumer-label \{ text-decoration: underline;/);
+  assert.doesNotMatch(css, /\.gnb-consumer:hover \{ text-decoration: underline;/);
+});
+
+test("GNB preview omits fifth-depth descendants", () => {
+  const preview = renderMenuNodeFor({
+    label: "Fourth depth",
+    depth: 4,
+    enabled: true,
+    children: [{ label: "Fifth depth", depth: 5, enabled: true, children: [] }],
+  });
+
+  assert.doesNotMatch(preview, /Fifth depth/);
 });
 
 test("the HVAC baseline follows the current Global IA menu", () => {
