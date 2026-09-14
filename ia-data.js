@@ -2564,6 +2564,43 @@ window.IA_SOURCE = [
   }
 ];
 
+// HVAC Global IA updated from the current lg.com/business Solutions menu.
+window.IA_SOURCE.splice(1, 19, ...[
+  ["Solutions", "HVAC", "Why LG HVAC", "Awards and Certifications"],
+  [null, null, "Commercial Solutions", "VRF System"],
+  [null, null, null, "Single Packaged"],
+  [null, null, null, "Single Split"],
+  [null, null, null, "Commercial ERV"],
+  [null, null, null, "Air to Water Heat Pump"],
+  [null, null, null, "Control Solutions"],
+  [null, null, "Residential Solutions", "Air to Water Heat Pump"],
+  [null, null, null, "Multi Split"],
+  [null, null, null, "Residential ERV"],
+  [null, null, null, "Water Heater"],
+  [null, null, null, "Electric Water Heater"],
+  [null, null, null, "Control Solutions"],
+  [null, null, "Industrial Solutions", "Chiller"],
+  [null, null, null, "Data Center Solutions"],
+  [null, null, "Service & Maintenance", "VRF Annual Maintenance"],
+  [null, null, null, "VRF Renewal Service"],
+  [null, null, null, "Chiller Annual Maintenance"],
+  [null, null, null, "Chiller Renewal Service"],
+  [null, null, "Resources & Guides", "Resource Download"],
+  [null, null, null, "Technical Data"],
+  [null, null, null, "Tools & Software"],
+  [null, null, null, "Video Guide"],
+  [null, null, null, "Training Course"],
+  [null, null, null, "Newsletter"],
+  [null, null, null, "Insights"],
+].map((levels, index) => ({
+  sourceRow: 7 + index,
+  depth: levels.filter(Boolean).length,
+  label: levels.filter(Boolean).at(-1),
+  levels: [...levels, null].slice(0, 5),
+  external: null,
+  banner: null,
+})));
+
 window.IA_EXTRAS = [
   {
     "sourceRow": 5,
@@ -2577,4 +2614,4 @@ window.IA_EXTRAS = [
   }
 ];
 
-window.IA_META = {"workbook": "LG_B2B_Global_IA.xlsx", "sheet": "Global", "importedRows": 183, "extras": 2};
+window.IA_META = {"workbook": "LG_B2B_Global_IA.xlsx", "sheet": "Global", "importedRows": 190, "extras": 2};

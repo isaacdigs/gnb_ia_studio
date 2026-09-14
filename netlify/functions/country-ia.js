@@ -3,7 +3,7 @@ const { verifyToken } = require("./auth-token");
 const COUNTRIES = new Set([
   "Bangladesh", "New Zealand", "Srilanka", "Nepal", "Ukraine", "Uzbekistan_RU",
   "Uzbekistan", "Bulgaria", "Serbia", "Latvia", "Croatia", "Slovakia", "Denmark",
-  "Finland", "Norway", "Lithuania", "Estonia", "Iran (RTL)",
+  "Finland", "Norway", "Lithuania", "Estonia", "Switzerland_DE", "Switzerland_FR",
 ]);
 const headers = {
   "Cache-Control": "no-store",

@@ -8,15 +8,31 @@ const AUTH_TOKEN_KEY = "lg-gnb-studio-token";
 const COUNTRY_IA_ENDPOINT = "/.netlify/functions/country-ia";
 const STORAGE_KEY = "lg-gnb-studio-tree-v2";
 const COUNTRY_STORAGE_KEY = "lg-gnb-studio-countries-v1";
-const COUNTRIES = ["Bangladesh", "New Zealand", "Srilanka", "Nepal", "Ukraine", "Uzbekistan_RU", "Uzbekistan", "Bulgaria", "Serbia", "Latvia", "Croatia", "Slovakia", "Denmark", "Finland", "Norway", "Lithuania", "Estonia", "Iran (RTL)"];
+const COUNTRIES = ["Bangladesh", "New Zealand", "Srilanka", "Nepal", "Ukraine", "Uzbekistan_RU", "Uzbekistan", "Bulgaria", "Serbia", "Latvia", "Croatia", "Slovakia", "Denmark", "Finland", "Norway", "Lithuania", "Estonia", "Switzerland_DE", "Switzerland_FR"];
+const COUNTRY_PATHS = Object.freeze({
+  Bangladesh: "bd", "New Zealand": "nz", Srilanka: "lk", Nepal: "np", Ukraine: "ua", Uzbekistan_RU: "uz-ru", Uzbekistan: "uz",
+  Bulgaria: "bg", Serbia: "rs", Latvia: "lv", Croatia: "hr", Slovakia: "sk", Denmark: "dk", Finland: "fi", Norway: "no",
+  Lithuania: "lt", Estonia: "ee", Switzerland_DE: "ch-de", Switzerland_FR: "ch-fr",
+});
+
+function countryFromPath(pathname = window.location.pathname) {
+  const countryCode = pathname.split("/").filter(Boolean)[0]?.toLowerCase();
+  return Object.entries(COUNTRY_PATHS).find(([, code]) => code === countryCode)?.[0] || COUNTRIES[0];
+}
+
+function updateCountryPath(country) {
+  const nextPath = `/${COUNTRY_PATHS[country] || COUNTRY_PATHS[COUNTRIES[0]]}`;
+  if (window.location.pathname !== nextPath) history.replaceState({}, "", `${nextPath}${window.location.search}${window.location.hash}`);
+}
 
 const initialTree = buildTree(IA_SOURCE);
-const initialCountryState = sessionStorage.getItem(AUTH_TOKEN_KEY) ? null : loadCountryState(COUNTRIES[0]);
+const initialCountry = countryFromPath();
+const initialCountryState = sessionStorage.getItem(AUTH_TOKEN_KEY) ? null : loadCountryState(initialCountry);
 let tree = initialCountryState?.tree || clone(initialTree);
 const defaultSelection = findFirstByLabel(tree, "Solutions") || tree[0];
 const state = {
   authToken: sessionStorage.getItem(AUTH_TOKEN_KEY) || "",
-  country: COUNTRIES[0],
+  country: initialCountry,
   dirty: false,
   isSaving: false,
   lastSavedAt: initialCountryState?.savedAt || null,
@@ -28,6 +44,7 @@ const state = {
   search: "",
   dragId: null,
   dropMode: null,
+  linkDetailsOpen: new Set(),
 };
 
 const ui = {
@@ -90,6 +107,9 @@ function buildTree(rows) {
           sourceRows: [],
           external: null,
           banner: null,
+          destination: "Local Page",
+          linkType: "",
+          linkUrl: "",
         };
         siblings.push(node);
       }
@@ -100,11 +120,68 @@ function buildTree(rows) {
       current.length = level + 1;
     }
   }
+  return trimWhyLgDescendants(roots);
+}
+
+function trimWhyLgDescendants(roots) {
+  eachNode(roots, (node) => {
+    if (node.depth === 2 && node.label.trim().toLowerCase() === "why lg") node.children = [];
+  });
   return roots;
+}
+
+function canSetExternalLink(node) {
+  return node.depth >= 3;
 }
 
 function isValidTree(candidate) {
   return Array.isArray(candidate) && candidate.every((node) => node && node.label && Array.isArray(node.children));
+}
+
+function findHvacBranch(roots) {
+  const solutions = roots.find((node) => node.label.trim().toLowerCase() === "solutions");
+  return solutions?.children.find((node) => node.label.trim().toLowerCase() === "hvac") || null;
+}
+
+function preserveHvacSettings(source, replacement, path = []) {
+  const sourceByPath = new Map();
+  function collect(node, nodePath) {
+    sourceByPath.set(nodePath.join("/"), node);
+    node.children.forEach((child) => collect(child, [...nodePath, child.label.trim().toLowerCase()]));
+  }
+  function apply(node, nodePath) {
+    const saved = sourceByPath.get(nodePath.join("/"));
+    if (saved) {
+      for (const key of ["enabled", "destination", "linkType", "linkUrl", "external", "banner"]) node[key] = saved[key];
+    }
+    node.children.forEach((child) => apply(child, [...nodePath, child.label.trim().toLowerCase()]));
+  }
+
+  const rootPath = [...path, source.label.trim().toLowerCase()];
+  collect(source, rootPath);
+  apply(replacement, rootPath);
+}
+
+function reconcileHvacBaseline(roots) {
+  const existingHvac = findHvacBranch(roots);
+  const baselineHvac = findHvacBranch(initialTree);
+  if (!existingHvac || !baselineHvac) return roots;
+
+  const replacement = clone(baselineHvac);
+  preserveHvacSettings(existingHvac, replacement, ["solutions"]);
+  const solutions = roots.find((node) => node.label.trim().toLowerCase() === "solutions");
+  solutions.children.splice(solutions.children.indexOf(existingHvac), 1, replacement);
+  return roots;
+}
+
+function normalizeTree(candidate) {
+  const normalized = reconcileHvacBaseline(clone(candidate));
+  eachNode(normalized, (node) => {
+    node.destination = canSetExternalLink(node) && node.destination === "External Link" ? "External Link" : "Local Page";
+    node.linkType = node.destination === "External Link" && ["Global", "Regional"].includes(node.linkType) ? node.linkType : "";
+    node.linkUrl = node.destination === "External Link" && typeof node.linkUrl === "string" ? node.linkUrl : "";
+  });
+  return trimWhyLgDescendants(normalized);
 }
 
 function loadCountryStates() {
@@ -118,11 +195,11 @@ function loadCountryStates() {
 
 function loadCountryState(country) {
   const record = loadCountryStates()[country];
-  if (record && isValidTree(record.tree)) return record;
+  if (record && isValidTree(record.tree)) return { ...record, tree: normalizeTree(record.tree) };
   if (country === COUNTRIES[0]) {
     try {
       const legacyTree = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-      if (isValidTree(legacyTree)) return { tree: legacyTree, savedAt: null };
+      if (isValidTree(legacyTree)) return { tree: normalizeTree(legacyTree), savedAt: null };
     } catch {}
   }
   return null;
@@ -141,7 +218,7 @@ async function fetchCountryState(country) {
   const response = await fetch(`${COUNTRY_IA_ENDPOINT}?country=${encodeURIComponent(country)}`, { headers: countryApiHeaders() });
   if (!response.ok) throw new Error("Unable to load the shared IA");
   const { record } = await response.json();
-  return record && isValidTree(record.tree) ? record : null;
+  return record && isValidTree(record.tree) ? { ...record, tree: normalizeTree(record.tree) } : null;
 }
 
 async function saveCountryState(country, nextTree) {
@@ -286,9 +363,7 @@ function visibleChildren(node) {
 function renderTree() {
   const content = renderBranch(tree, 0);
   ui.tree.innerHTML = content || `<div class="tree-empty">No IA labels match <strong>${escapeHtml(state.search)}</strong>.<br />Try another filter.</div>`;
-  const nodes = allNodes();
-  const active = nodes.filter(({ node }) => effectiveEnabled(node)).length;
-  ui.treeSummary.innerHTML = `<span><strong>${active}</strong> active / ${nodes.length} nodes</span><span>Drag to organize</span>`;
+  ui.treeSummary.innerHTML = `<span>Set each menu item's destination</span><span>Drag to organize</span>`;
 }
 
 function renderBranch(nodes, level) {
@@ -298,6 +373,8 @@ function renderBranch(nodes, level) {
     const selected = node.id === state.selectedId;
     const effective = effectiveEnabled(node);
     const childMarkup = hasChildren && expanded ? `<ul class="tree-branch">${renderBranch(node.children, level + 1)}</ul>` : "";
+    const external = canSetExternalLink(node) && node.destination === "External Link";
+    const destinationControl = canSetExternalLink(node) ? `<button class="destination-toggle ${external ? "is-external" : ""}" data-action="toggle-destination" data-id="${node.id}" aria-label="Destination: ${node.destination}"><span>Local</span><span>Ex.</span></button>` : "";
     const childrenMatch = node.children.some(branchMatches);
     const partial = node.enabled && !effective;
     return `<li class="tree-item" role="none">
@@ -305,8 +382,7 @@ function renderBranch(nodes, level) {
         <button class="expand-button ${hasChildren ? "" : "empty"}" data-action="toggle-expand" data-id="${node.id}" aria-label="${expanded ? "Collapse" : "Expand"} ${escapeHtml(node.label)}">${hasChildren ? (expanded ? "⌄" : "›") : "·"}</button>
         <button class="node-toggle ${node.enabled ? "enabled" : ""} ${partial ? "partial" : ""}" data-action="toggle-node" data-id="${node.id}" aria-label="${node.enabled ? "Disable" : "Enable"} ${escapeHtml(node.label)}" aria-checked="${node.enabled}">${node.enabled ? "✓" : ""}</button>
         <span class="node-label" title="${escapeHtml(node.label)}">${escapeHtml(node.label)}</span>
-        <span class="node-meta">D${node.depth}${hasChildren ? ` · ${node.children.length}` : ""}</span>
-        <span class="drag-handle" title="Drag to reorder" aria-hidden="true">⠿</span>
+        ${destinationControl}
       </div>
       ${childMarkup}
       ${state.search && !childrenMatch && !matchesSearch(node) ? "" : ""}
@@ -318,6 +394,19 @@ function logoMarkup(className = "") {
   return `<img class="lg-logo ${className}" src="assets/lg-logo.png" alt="LG" />`;
 }
 
+function externalLinkIcon(node) {
+  return `<span class="external-link-icon" data-action="toggle-link-details" data-id="${node.id}" role="button" tabindex="0" aria-label="Edit external link for ${escapeHtml(node.label)}"><img src="assets/icon-blank-mid-gray2-14-14.svg" alt="" /></span>`;
+}
+
+function renderExternalLinkControl(node) {
+  const details = state.linkDetailsOpen.has(node.id) ? renderPreviewLinkDetails(node) : "";
+  return `<span class="external-link-control">${externalLinkIcon(node)}${details}</span>`;
+}
+
+function menuLabel(node) {
+  return `<span class="preview-label" data-preview-node-id="${node.id}">${escapeHtml(node.label)}${canSetExternalLink(node) && node.destination === "External Link" ? renderExternalLinkControl(node) : ""}</span>`;
+}
+
 function renderPreview() {
   const activeRoots = tree.filter((root) => !["contact us", "consumer"].includes(root.label.trim().toLowerCase()) && effectiveEnabled(root));
   let activeRoot = findNode(state.previewRootId)?.node;
@@ -326,11 +415,21 @@ function renderPreview() {
 
   const nav = activeRoots.map((root) => {
     const isActive = root.id === activeRoot?.id;
-    return `<button class="gnb-nav-item ${isActive ? "active" : ""}" data-action="preview-root" data-id="${root.id}">${escapeHtml(root.label)}</button>`;
+    return `<button class="gnb-nav-item ${isActive ? "active" : ""}" data-action="preview-root" data-id="${root.id}">${menuLabel(root)}</button>`;
   }).join("");
 
   const menu = activeRoot ? renderMenuPanel(activeRoot) : `<div class="menu-overflow">No active navigation items.</div>`;
   ui.preview.innerHTML = `<div class="gnb-mainbar"><div class="gnb-logo">${logoMarkup()}</div><nav class="gnb-nav" aria-label="Business navigation">${nav}</nav><div class="gnb-utilities"><a class="gnb-consumer" href="#consumer">Consumer <span class="consumer-arrow" aria-hidden="true">↗</span></a><button class="gnb-contact" type="button">Contact us</button><button class="gnb-search" type="button" aria-label="Search"></button></div></div>${menu}`;
+}
+
+function renderPreviewLinkDetails(node) {
+  if (node.destination !== "External Link") return "";
+  return `<div class="preview-link-details" data-id="${node.id}">
+    <button class="link-details-close" data-action="close-link-details" data-id="${node.id}" aria-label="Close link editor">×</button>
+    <strong>${escapeHtml(node.label)}</strong>
+    <label>Link:<select data-link-field="linkType" data-id="${node.id}"><option value="Global" ${node.linkType === "Global" ? "selected" : ""}>Global</option><option value="Regional" ${node.linkType === "Regional" ? "selected" : ""}>Regional</option></select></label>
+    <label>URL:<input type="url" value="${escapeHtml(node.linkUrl)}" placeholder="https://" data-link-field="linkUrl" data-id="${node.id}" /></label>
+  </div>`;
 }
 
 function renderMenuPanel(root) {
@@ -338,19 +437,22 @@ function renderMenuPanel(root) {
   const preferredChild = root.label === "Solutions" ? children.find((child) => child.label === "Commercial Display") : null;
   const activeChild = children.find((child) => child.id === state.activeChildId) || preferredChild || children[0];
   state.activeChildId = activeChild?.id || "";
-  const subnav = children.length ? `<div class="gnb-subnav" aria-label="${escapeHtml(root.label)} categories">${children.map((child) => `<button class="gnb-subnav-item ${child.id === activeChild?.id ? "active" : ""}" data-action="preview-child" data-id="${child.id}">${escapeHtml(child.label)}</button>`).join("")}</div>` : "";
+  const subnav = children.length ? `<div class="gnb-subnav" aria-label="${escapeHtml(root.label)} categories">${children.map((child) => `<button class="gnb-subnav-item ${child.id === activeChild?.id ? "active" : ""}" data-action="preview-child" data-id="${child.id}">${menuLabel(child)}</button>`).join("")}</div>` : "";
   const menuNodes = activeChild ? (activeChild.children.length ? visibleChildren(activeChild) : [activeChild]) : [];
-  const columns = menuNodes.map((child) => {
-    const nestedNodes = child.children.length ? visibleChildren(child) : [child];
-    return `<div class="menu-column"><h4>${escapeHtml(child.label)}</h4><ul class="menu-list">${nestedNodes.map(renderMenuNode).join("")}</ul></div>`;
-  }).join("");
-  return `${subnav}<div class="gnb-menu-panel">${columns ? `<div class="menu-columns">${columns}</div>` : `<div class="menu-overflow">This item has no nested categories yet.</div>`}</div>`;
+  return `${subnav}<div class="gnb-menu-panel">${menuNodes.length ? renderMenuColumns(menuNodes) : `<div class="menu-overflow">This item has no nested categories yet.</div>`}</div>`;
+}
+
+function renderMenuColumns(nodes) {
+  return `<div class="menu-columns">${nodes.map((node) => {
+    const children = visibleChildren(node);
+    return `<div class="menu-column"><h4>${menuLabel(node)}</h4>${children.length ? `<ul class="menu-list">${children.map(renderMenuNode).join("")}</ul>` : ""}</div>`;
+  }).join("")}</div>`;
 }
 
 function renderMenuNode(node) {
   const children = visibleChildren(node);
   const className = children.length ? "group" : "";
-  return `<li class="${className}"><span>${escapeHtml(node.label)}</span>${children.length ? `<ul>${children.map(renderMenuNode).join("")}</ul>` : ""}</li>`;
+  return `<li class="${className}"><span>${menuLabel(node)}</span>${children.length ? `<ul>${children.map(renderMenuNode).join("")}</ul>` : ""}</li>`;
 }
 
 function render() {
@@ -358,18 +460,24 @@ function render() {
   renderPreview();
 }
 
+function focusPreviewNode(id) {
+  ui.preview.querySelector(`[data-preview-node-id="${id}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
 function selectNode(id) {
   const info = findNode(id);
   if (!info) return;
   state.selectedId = id;
   state.previewRootId = rootIdFor(id) || state.previewRootId;
-  state.activeChildId = "";
+  state.activeChildId = nodePath(id)[1]?.id || "";
+  state.linkDetailsOpen = new Set();
   let parent = info.parent;
   while (parent) {
     state.expanded.add(parent.id);
     parent = findNode(parent.id)?.parent;
   }
   render();
+  focusPreviewNode(id);
 }
 
 function toggleNode(id) {
@@ -380,6 +488,33 @@ function toggleNode(id) {
   markDirty();
   render();
   showToast(`${info.node.label} ${info.node.enabled ? "included" : "excluded"} from the preview.`);
+}
+
+function toggleDestination(id) {
+  const info = findNode(id);
+  if (!info || !canSetExternalLink(info.node)) return;
+  const isExternal = info.node.destination === "External Link";
+  info.node.destination = isExternal ? "Local Page" : "External Link";
+  info.node.linkType = isExternal ? "" : "Global";
+  info.node.linkUrl = isExternal ? "" : info.node.linkUrl;
+  state.linkDetailsOpen.delete(id);
+  state.selectedId = id;
+  markDirty();
+  render();
+}
+
+function toggleLinkDetails(id) {
+  const info = findNode(id);
+  if (!info || !canSetExternalLink(info.node)) return;
+  if (state.linkDetailsOpen.has(id)) state.linkDetailsOpen.delete(id);
+  else state.linkDetailsOpen = new Set([id]);
+  state.selectedId = id;
+  renderPreview();
+}
+
+function closeLinkDetails(id) {
+  state.linkDetailsOpen.delete(id);
+  renderPreview();
 }
 
 function toggleExpand(id) {
@@ -417,6 +552,7 @@ function resetTree() {
   state.previewRootId = rootIdFor(state.selectedId) || tree[0]?.id || "";
   state.activeChildId = "";
   state.expanded = new Set(tree.filter((node) => node.depth <= 1).map((node) => node.id));
+  state.linkDetailsOpen = new Set();
   markDirty();
   render();
   showToast("IA reset to the workbook baseline.");
@@ -429,6 +565,7 @@ function resetViewState() {
   state.activeChildId = "";
   state.expanded = new Set(tree.filter((node) => node.depth <= 1).map((node) => node.id));
   state.search = "";
+  state.linkDetailsOpen = new Set();
   ui.treeSearch.value = "";
 }
 
@@ -442,6 +579,7 @@ async function switchCountry(country, { force = false } = {}) {
     state.dirty = false;
     state.pendingCountry = null;
     ui.countrySelect.value = country;
+    updateCountryPath(country);
     ui.countryConfirm.classList.add("hidden");
     resetViewState();
     renderSaveControls();
@@ -454,6 +592,7 @@ async function switchCountry(country, { force = false } = {}) {
     state.dirty = false;
     state.pendingCountry = null;
     ui.countrySelect.value = country;
+    updateCountryPath(country);
     ui.countryConfirm.classList.add("hidden");
     resetViewState();
     renderSaveControls();
@@ -489,7 +628,7 @@ function exportRows() {
     if (!children.length) {
       const levels = Array(5).fill("");
       path.slice(0, 5).forEach((item, index) => { levels[index] = item.label; });
-      rows.push([...levels, path[0]?.external || "", path[0]?.banner || ""]);
+      rows.push([...levels, path[0]?.external || "", path[0]?.banner || "", node.destination || "Local Page", node.destination === "External Link" ? node.linkType || "" : "", node.destination === "External Link" ? node.linkUrl || "" : ""]);
       return;
     }
     children.forEach((child) => visit(child, path));
@@ -500,7 +639,7 @@ function exportRows() {
 }
 
 function hierarchyMerges(rows) {
-  const merges = [{ s: { r: 1, c: 1 }, e: { r: 1, c: 7 } }];
+  const merges = [{ s: { r: 1, c: 1 }, e: { r: 1, c: 10 } }];
   for (let column = 0; column < 5; column += 1) {
     let start = 0;
     while (start < rows.length) {
@@ -521,15 +660,15 @@ function exportIA() {
   }
 
   const rows = exportRows();
-  const headers = ["1D", "2D", "3D", "4D", "5D", "External", "Banners"];
+  const headers = ["1D", "2D", "3D", "4D", "5D", "External", "Banners", "Destination", "Link-type", "Link-URL"];
   const sheet = XLSX.utils.aoa_to_sheet([
-    Array(8).fill(""),
-    ["", state.country, "", "", "", "", "", ""],
+    Array(11).fill(""),
+    ["", state.country, "", "", "", "", "", "", "", "", ""],
     ["", ...headers],
     ...rows.map((row) => ["", ...row]),
   ]);
   sheet["!merges"] = hierarchyMerges(rows);
-  sheet["!cols"] = [{ wch: 5.9 }, { wch: 16.9 }, { wch: 22 }, { wch: 28 }, { wch: 26 }, { wch: 19.9 }, { wch: 18 }, { wch: 27.4 }];
+  sheet["!cols"] = [{ wch: 5.9 }, { wch: 16.9 }, { wch: 22 }, { wch: 28 }, { wch: 26 }, { wch: 19.9 }, { wch: 18 }, { wch: 27.4 }, { wch: 18 }, { wch: 16 }, { wch: 42 }];
   sheet["!rows"] = [{ hpt: 15 }, { hpt: 24 }, { hpt: 21 }];
 
   const titleStyle = { font: { name: "Malgun Gothic", sz: 16, bold: true }, alignment: { horizontal: "center", vertical: "center" } };
@@ -563,11 +702,16 @@ async function showStudio() {
 function handleAction(action, id) {
   if (action === "toggle-node") toggleNode(id);
   if (action === "toggle-expand") toggleExpand(id);
+  if (action === "toggle-destination") toggleDestination(id);
+  if (action === "toggle-link-details") toggleLinkDetails(id);
+  if (action === "close-link-details") closeLinkDetails(id);
   if (action === "preview-root") {
+    state.linkDetailsOpen = new Set();
     state.previewRootId = id;
     selectNode(id);
   }
   if (action === "preview-child") {
+    state.linkDetailsOpen = new Set();
     state.activeChildId = id;
     renderPreview();
   }
@@ -649,9 +793,28 @@ document.addEventListener("input", (event) => {
     state.search = event.target.value.trim();
     renderTree();
   }
+  if (event.target.dataset.linkField) {
+    const info = findNode(event.target.dataset.id);
+    if (!info || info.node[event.target.dataset.linkField] === event.target.value) return;
+    info.node[event.target.dataset.linkField] = event.target.value;
+    markDirty();
+  }
+});
+
+document.addEventListener("change", (event) => {
+  if (!event.target.dataset.linkField) return;
+  const info = findNode(event.target.dataset.id);
+  if (!info || info.node[event.target.dataset.linkField] === event.target.value) return;
+  info.node[event.target.dataset.linkField] = event.target.value;
+  markDirty();
 });
 
 ui.countrySelect.addEventListener("change", (event) => requestCountrySwitch(event.target.value));
+
+window.addEventListener("popstate", () => {
+  const country = countryFromPath();
+  if (country !== state.country) switchCountry(country, { force: true });
+});
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "/" && document.activeElement !== ui.treeSearch && document.activeElement !== ui.passwordInput) {

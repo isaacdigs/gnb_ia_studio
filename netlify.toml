@@ -4,3 +4,98 @@
 
 [functions]
   directory = "netlify/functions"
+
+[[redirects]]
+  from = "/bd"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/nz"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/lk"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/np"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/ua"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/uz"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/uz-ru"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/bg"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/rs"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/lv"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/hr"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/sk"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/dk"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/fi"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/no"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/lt"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/ee"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/ch-de"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/ch-fr"
+  to = "/index.html"
+  status = 200
